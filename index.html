@@ -127,6 +127,9 @@
 
 <div class="syncbar">
   <h1>Irina的小金库</h1>
+  <div id="maskPill" class="pill" onclick="toggleMask()" title="Hide/show all $ amounts">
+    <span id="maskIcon">👁</span>
+  </div>
   <div id="syncPill" class="pill" onclick="openSyncDialog()" title="Click to configure cloud sync">
     <span class="dot"></span><span id="syncLabel">Local only</span>
   </div>
@@ -375,13 +378,25 @@ function disableSync() {
   closeDialog("syncDialog");
 }
 
+let masked = localStorage.getItem("assetTracker.masked") === "1";
+function toggleMask() {
+  masked = !masked;
+  localStorage.setItem("assetTracker.masked", masked ? "1" : "0");
+  document.getElementById("maskIcon").textContent = masked ? "🙈" : "👁";
+  render();
+}
+function applyMaskOnLoad() {
+  document.getElementById("maskIcon").textContent = masked ? "🙈" : "👁";
+}
 function fmt(n) {
   if (n === null || n === undefined || isNaN(n)) return "—";
+  if (masked) return "•••";
   const s = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   return (n < 0 ? "-$" : "$") + s;
 }
 function fmtDelta(n) {
   if (!n || isNaN(n)) return "";
+  if (masked) return "•••";
   const sign = n > 0 ? "+" : "−";
   return sign + "$" + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
@@ -423,6 +438,7 @@ function fmtPct(cur, prev) {
   if (!prev || isNaN(prev)) return "";
   const pct = ((cur - prev) / Math.abs(prev)) * 100;
   if (!isFinite(pct)) return "";
+  if (masked) return "•••";
   const sign = pct > 0 ? "+" : pct < 0 ? "−" : "";
   return sign + Math.abs(pct).toFixed(1) + "%";
 }
@@ -606,7 +622,7 @@ function renderChart() {
     },
     scales: {
       x: { ticks: { color: "#8b93a7" }, grid: { color: "#252a36" } },
-      y: { ticks: { color: "#8b93a7", callback: v => "$" + (v/1000).toFixed(0) + "k" }, grid: { color: "#252a36" } }
+      y: { ticks: { color: "#8b93a7", callback: v => masked ? "•••" : ("$" + (v/1000).toFixed(0) + "k") }, grid: { color: "#252a36" } }
     }
   };
   if (chart) { chart.data = data; chart.update(); }
@@ -614,16 +630,13 @@ function renderChart() {
 }
 
 function openAddSnapshot() {
-  const dates = sortedDates();
-  const latest = dates[dates.length - 1];
-  const prev = state.snapshots[latest] || {};
   const today = new Date().toISOString().slice(0,10);
   document.getElementById("snapDate").value = today;
   const wrap = document.getElementById("snapInputs");
   wrap.innerHTML = state.accounts.map(acc => `
     <div class="field">
       <label>${escapeHtml(acc.name)} <span class="small">(${acc.type})</span></label>
-      <input type="number" step="0.01" data-acc="${acc.id}" value="${prev[acc.id] ?? ""}">
+      <input type="number" step="0.01" data-acc="${acc.id}" placeholder="0">
     </div>
   `).join("");
   document.getElementById("addSnapDialog").showModal();
@@ -634,7 +647,7 @@ function saveSnapshot() {
   const snap = {};
   document.querySelectorAll("#snapInputs input").forEach(i => {
     const v = i.value.trim();
-    if (v !== "") snap[i.dataset.acc] = parseFloat(v);
+    snap[i.dataset.acc] = v === "" ? 0 : parseFloat(v);
   });
   state.snapshots[date] = snap;
   save(); closeDialog("addSnapDialog"); render();
@@ -694,6 +707,7 @@ function resetToSeed() {
   save(); render();
 }
 
+applyMaskOnLoad();
 render();
 if (sync.pat && sync.gistId) {
   setSyncStatus("syncing","Connecting...");
